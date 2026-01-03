@@ -21,7 +21,7 @@ Dependencies:
     - stockfish: Chess engine binary (external)
 
 Author: Jon Arve Ovesen
-License: MIT (assumed)
+License: MIT
 """
 
 import chess
