@@ -52,8 +52,12 @@ def _parse_int_env(var_name, default_value):
     try:
         return int(raw_value)
     except ValueError:
-        print(f"Invalid value for {var_name}: {raw_value}. Using default {default_value}.")
+        print(f"Invalid value for {var_name}. Using default {default_value}.")
         return default_value
+
+
+def _timestamp_token():
+    return f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
 def get_gemini_move(board, retries=3):
     """
@@ -169,7 +173,7 @@ def save_game_data(board, output_dir="data", aggregate_file=None, telemetry=None
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+    timestamp = _timestamp_token()
     per_game_path = output_dir_path / f"game_{timestamp}.pgn"
     aggregate_path = Path(aggregate_file) if aggregate_file else output_dir_path / "training_data.pgn"
 
@@ -191,7 +195,7 @@ def run_session(game_count=1, output_dir="data"):
         print(f"\n=== Starting game {game_index}/{game_count} ===")
         board, duration_seconds = play_game()
         outcome = board.outcome()
-        termination = outcome.termination.name if outcome and outcome.termination else "UNKNOWN"
+        termination = getattr(outcome.termination, "name", "UNKNOWN") if outcome and outcome.termination else "UNKNOWN"
 
         telemetry = {
             "duration_seconds": duration_seconds,
