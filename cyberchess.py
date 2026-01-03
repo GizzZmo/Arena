@@ -60,7 +60,8 @@ def get_gemini_move(board, retries=3):
     Sends the board state to Gemini and asks for a move.
     Includes a retry loop for illegal moves.
     """
-    legal_moves = [move.uci() for move in board.legal_moves]
+    legal_moves = list(board.legal_moves)
+    legal_move_strings = [move.uci() for move in legal_moves]
     
     # We provide the FEN (Board State) and the list of legal moves to help Gemini
     # ground its reasoning and avoid hallucinations.
@@ -70,7 +71,7 @@ def get_gemini_move(board, retries=3):
     Current Board Position (FEN): {board.fen()}
     
     Here is the list of legally possible moves you can make:
-    {', '.join(legal_moves)}
+    {', '.join(legal_move_strings)}
     
     Your goal is to survive and learn. Analyze the board.
     Pick the best move from the legal list above.
@@ -88,7 +89,7 @@ def get_gemini_move(board, retries=3):
 
             move = chess.Move.from_uci(move_str)
 
-            if move in board.legal_moves:
+            if move in legal_moves:
                 return move
             else:
                 print(f" > Gemini tried illegal move: {move_str}. Retrying...")
@@ -101,7 +102,7 @@ def get_gemini_move(board, retries=3):
 
     # If Gemini fails 3 times, we make a random move to keep the game going (fallback)
     print(" > Gemini failed to produce a legal move. Making random move.")
-    return random.choice(list(board.legal_moves))
+    return random.choice(legal_moves)
 
 def play_game():
     # Initialize Board and Stockfish
