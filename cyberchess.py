@@ -1,22 +1,46 @@
+import os
+import time
+import datetime
+from pathlib import Path
+
 import chess
 import chess.engine
 import chess.pgn
 import google.generativeai as genai
-import time
-import datetime
 
 # --- CONFIGURATION ---
-# REPLACE THIS with the path to your downloaded stockfish file
-# Windows example: "C:/Users/Jon/Downloads/stockfish/stockfish-windows-x86-64.exe"
-# Mac example: "/opt/homebrew/bin/stockfish"
-STOCKFISH_PATH = "YOUR_STOCKFISH_PATH_HERE" 
+STOCKFISH_PATH = os.getenv(
+    "STOCKFISH_PATH",
+    "YOUR_STOCKFISH_PATH_HERE",
+)
 
-# REPLACE THIS with your Google Gemini API Key
-GOOGLE_API_KEY = "YOUR_GEMINI_API_KEY_HERE"
+# REPLACE THIS with your Google Gemini API Key or set GOOGLE_API_KEY
+GOOGLE_API_KEY = os.getenv(
+    "GOOGLE_API_KEY",
+    "YOUR_GEMINI_API_KEY_HERE",
+)
 
-# Setup Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed
+
+def _get_model():
+    if not GOOGLE_API_KEY or GOOGLE_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        raise RuntimeError("Set GOOGLE_API_KEY to a valid Gemini API key before running.")
+
+    genai.configure(api_key=GOOGLE_API_KEY)
+    return genai.GenerativeModel("gemini-1.5-flash")  # Using Flash for speed
+
+
+def _validate_stockfish_path():
+    if not STOCKFISH_PATH or STOCKFISH_PATH == "YOUR_STOCKFISH_PATH_HERE":
+        raise RuntimeError("Set STOCKFISH_PATH to your Stockfish binary path.")
+
+    path = Path(STOCKFISH_PATH)
+    if not path.exists():
+        raise FileNotFoundError(f"Stockfish binary not found at {path}")
+
+    return str(path)
+
+
+model = None
 
 def get_gemini_move(board, retries=3):
     """
@@ -43,6 +67,10 @@ def get_gemini_move(board, retries=3):
 
     for attempt in range(retries):
         try:
+            global model
+            if model is None:
+                model = _get_model()
+
             response = model.generate_content(prompt)
             move_str = response.text.strip().replace("\n", "").replace(" ", "")
             
@@ -70,7 +98,8 @@ def get_gemini_move(board, retries=3):
 def play_game():
     # Initialize Board and Stockfish
     board = chess.Board()
-    engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+    start_time = time.time()
+    engine = chess.engine.SimpleEngine.popen_uci(_validate_stockfish_path())
     
     # Set Stockfish skill level (Lower it initially so Gemini has a chance)
     # Skill level 0 is weak, 20 is Grandmaster. Let's start at 5.
@@ -106,9 +135,11 @@ def play_game():
     print(f"Result: {board.result()}")
     
     engine.quit()
-    return board
+    duration_seconds = time.time() - start_time
 
-def save_game_data(board):
+    return board, duration_seconds
+
+def save_game_data(board, output_dir="data", aggregate_file=None, telemetry=None):
     """
     Saves the game to a PGN file. 
     This is the dataset we will use later to FINE TUNE Gemini.
@@ -118,12 +149,65 @@ def save_game_data(board):
     pgn_game.headers["White"] = "Stockfish Level 5"
     pgn_game.headers["Black"] = "Gemini 1.5 Flash"
     pgn_game.headers["Date"] = datetime.datetime.now().strftime("%Y.%m.%d")
+    pgn_game.headers["Result"] = board.result()
 
-    with open("training_data.pgn", "a") as f:
+    if telemetry:
+        pgn_game.headers["PlyCount"] = str(telemetry.get("ply_count"))
+        pgn_game.headers["DurationSeconds"] = f"{telemetry.get('duration_seconds', 0):.1f}"
+        if telemetry.get("termination"):
+            pgn_game.headers["Termination"] = telemetry["termination"]
+
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    per_game_path = output_dir_path / f"game_{timestamp}.pgn"
+    aggregate_path = Path(aggregate_file) if aggregate_file else output_dir_path / "training_data.pgn"
+
+    with open(per_game_path, "w") as f:
         f.write(str(pgn_game) + "\n\n")
-    print("Game saved to 'training_data.pgn'")
+
+    with open(aggregate_path, "a") as f:
+        f.write(str(pgn_game) + "\n\n")
+
+    print(f"Game saved to '{per_game_path}' and aggregated in '{aggregate_path}'")
+    return per_game_path
+
+
+def run_session(game_count=1, output_dir="data"):
+    saved_paths = []
+    aggregate_file = Path(output_dir) / "training_data.pgn"
+
+    for game_index in range(1, game_count + 1):
+        print(f"\n=== Starting game {game_index}/{game_count} ===")
+        board, duration_seconds = play_game()
+        outcome = board.outcome()
+        termination = outcome.termination.name if outcome else "UNKNOWN"
+
+        telemetry = {
+            "duration_seconds": duration_seconds,
+            "ply_count": len(board.move_stack),
+            "termination": termination,
+        }
+
+        per_game_path = save_game_data(
+            board,
+            output_dir=output_dir,
+            aggregate_file=aggregate_file,
+            telemetry=telemetry,
+        )
+
+        print(
+            f"Game {game_index} result {board.result()} "
+            f"({termination}), {telemetry['ply_count']} plies in "
+            f"{telemetry['duration_seconds']:.1f}s -> {per_game_path}"
+        )
+        saved_paths.append(per_game_path)
+
+    return saved_paths
 
 if __name__ == "__main__":
-    # In a real app, you would loop this: while True: play_game()
-    finished_board = play_game()
-    save_game_data(finished_board)
+    games_to_play = int(os.getenv("ARENA_GAMES", "1"))
+    output_dir = os.getenv("ARENA_OUTPUT_DIR", "data")
+
+    run_session(game_count=games_to_play, output_dir=output_dir)
