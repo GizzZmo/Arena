@@ -2,6 +2,8 @@ import os
 import time
 import datetime
 import functools
+import random
+import uuid
 from pathlib import Path
 
 import chess
@@ -44,7 +46,7 @@ def _validate_stockfish_path():
 
 def _parse_int_env(var_name, default_value):
     raw_value = os.getenv(var_name)
-    if raw_value in (None, ""):
+    if raw_value is None or not raw_value.strip():
         return default_value
 
     try:
@@ -99,7 +101,6 @@ def get_gemini_move(board, retries=3):
 
     # If Gemini fails 3 times, we make a random move to keep the game going (fallback)
     print(" > Gemini failed to produce a legal move. Making random move.")
-    import random
     return random.choice(list(board.legal_moves))
 
 def play_game():
@@ -167,7 +168,7 @@ def save_game_data(board, output_dir="data", aggregate_file=None, telemetry=None
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    timestamp = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}_{uuid.uuid4().hex[:6]}"
     per_game_path = output_dir_path / f"game_{timestamp}.pgn"
     aggregate_path = Path(aggregate_file) if aggregate_file else output_dir_path / "training_data.pgn"
 

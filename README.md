@@ -189,6 +189,6 @@ Best practices for pages:
 ## Roadmap
 
 1. **Phase 1 – Arena Loop (Completed):** Stockfish vs. Gemini with illegal-move feedback and PGN logging. ✅ Definition of done: stable loop with reproducible setup docs.
-2. **Phase 2 – Data Growth (In progress):** Automated long-running sessions, basic telemetry (move counts, termination reason), and improved PGN metadata. ✅ Definition of done: nightly runs produce timestamped PGNs with minimal manual babysitting.
+2. **Phase 2 – Data Growth (In progress):** Automated long-running sessions, basic telemetry (move counts, termination reason), and improved PGN metadata. Definition of done: nightly runs produce timestamped PGNs with minimal manual babysitting.
 3. **Phase 3 – Fine-Tuning:** Export `training_data.pgn` to Vertex AI, swap in the fine-tuned model name, and validate against a fixed test suite of positions. ✅ Definition of done: baseline ELO/position tests recorded before and after swap.
 4. **Phase 4 – UX & Sharing:** Provide a CLI flag for headless runs, optional web viewer for games, and wiki guides for contributors. ✅ Definition of done: one-command start and a contributor page with expectations.
