@@ -218,8 +218,8 @@ def run_session(game_count=1, output_dir="data"):
 
         print(
             f"Game {game_index} result {board.result()} "
-            f"({termination}), {telemetry.get('ply_count', len(board.move_stack))} plies in "
-            f"{telemetry.get('duration_seconds', 0):.1f}s -> {per_game_path}"
+            f"({termination}), {telemetry['ply_count']} plies in "
+            f"{telemetry['duration_seconds']:.1f}s -> {per_game_path}"
         )
         saved_paths.append(per_game_path)
 
