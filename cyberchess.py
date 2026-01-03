@@ -75,6 +75,16 @@ def get_gemini_move(board, retries=3):
     legal_moves = [move.uci() for move in board.legal_moves]
     
     # Construct the initial prompt with board state and legal moves
+genai.configure(api_key=GOOGLE_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash') # Using Flash for speed
+
+def get_gemini_move(board, retries=3):
+    """
+    Sends the board state to Gemini and asks for a move.
+    Includes a retry loop for illegal moves.
+    """
+    legal_moves = [move.uci() for move in board.legal_moves]
+    
     # We provide the FEN (Board State) and the list of legal moves to help Gemini
     # ground its reasoning and avoid hallucinations.
     prompt = f"""
@@ -105,6 +115,16 @@ def get_gemini_move(board, retries=3):
             move = chess.Move.from_uci(move_str)
 
             # Validate that the move is legal
+    for attempt in range(retries):
+        try:
+            response = model.generate_content(prompt)
+            move_str = response.text.strip().replace("\n", "").replace(" ", "")
+            
+            # clean up common formatting issues if Gemini adds markdown
+            move_str = move_str.replace("`", "") 
+
+            move = chess.Move.from_uci(move_str)
+
             if move in board.legal_moves:
                 return move
             else:
@@ -119,6 +139,9 @@ def get_gemini_move(board, retries=3):
             prompt += f"\n\nERROR: Invalid format. Please reply ONLY with the move string (e.g., e7e5)."
 
     # Fallback: If Gemini fails after all retries, make a random move to keep the game going
+            prompt += f"\n\nERROR: Invalid format. Please reply ONLY with the move string (e.g., e7e5)."
+
+    # If Gemini fails 3 times, we make a random move to keep the game going (fallback)
     print(" > Gemini failed to produce a legal move. Making random move.")
     import random
     return random.choice(list(board.legal_moves))
@@ -154,6 +177,12 @@ def play_game():
     
     # Set Stockfish skill level (Lower it initially so Gemini has a chance)
     # Skill level 0 is weak, 20 is Grandmaster. Starting at 5 for balanced learning.
+    # Initialize Board and Stockfish
+    board = chess.Board()
+    engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+    
+    # Set Stockfish skill level (Lower it initially so Gemini has a chance)
+    # Skill level 0 is weak, 20 is Grandmaster. Let's start at 5.
     engine.configure({"Skill Level": 5})
 
     print("--- CYBERCHESS: Stockfish (White) vs Gemini (Black) ---")
@@ -164,6 +193,9 @@ def play_game():
     # Main game loop - continues until game ends
     while not board.is_game_over():
         # Display current move number and board state
+    game_moves = []
+    
+    while not board.is_game_over():
         print(f"\nMove {board.fullmove_number}")
         print(board)
         
@@ -171,6 +203,9 @@ def play_game():
             # --- STOCKFISH TURN (Teacher) ---
             print("Stockfish is thinking...")
             # Limit Stockfish to 0.1 seconds so it plays fast and games don't take too long
+            # --- STOCKFISH TURN ---
+            print("Stockfish is thinking...")
+            # Limit Stockfish to 0.1 seconds so it plays fast
             result = engine.play(board, chess.engine.Limit(time=0.1))
             board.push(result.move)
             print(f"Stockfish played: {result.move.uci()}")
@@ -178,6 +213,7 @@ def play_game():
             
         else:
             # --- GEMINI TURN (Student) ---
+            # --- GEMINI TURN ---
             print("Gemini is thinking...")
             move = get_gemini_move(board)
             board.push(move)
@@ -190,6 +226,9 @@ def play_game():
     print(f"Result: {board.result()}")
     
     # Properly shutdown the Stockfish engine
+    print("\n--- GAME OVER ---")
+    print(f"Result: {board.result()}")
+    
     engine.quit()
     return board
 
@@ -222,6 +261,10 @@ def save_game_data(board):
     # Convert the board state to PGN format with full move history
     pgn_game = chess.pgn.Game.from_board(board)
     # Add metadata headers for dataset organization
+    Saves the game to a PGN file. 
+    This is the dataset we will use later to FINE TUNE Gemini.
+    """
+    pgn_game = chess.pgn.Game.from_board(board)
     pgn_game.headers["Event"] = "Cyberchess Dojo"
     pgn_game.headers["White"] = "Stockfish Level 5"
     pgn_game.headers["Black"] = "Gemini 1.5 Flash"
@@ -246,5 +289,6 @@ if __name__ == "__main__":
     This will accumulate games overnight for dataset building.
     """
     # Play a single game and save the results
+    # In a real app, you would loop this: while True: play_game()
     finished_board = play_game()
     save_game_data(finished_board)
