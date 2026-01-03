@@ -1,0 +1,16 @@
+# Core Dependencies for Arena Chess Training Platform
+# Install with: pip install -r requirements.txt
+
+# Chess game logic and board management
+python-chess>=1.999
+
+# Google Gemini AI model interface
+google-generativeai>=0.3.0
+
+# Future dependencies (uncomment when needed)
+# google-cloud-aiplatform>=1.38.0  # For Phase 3: Vertex AI fine-tuning
+# pandas>=2.0.0                     # For Phase 4: Data analysis
+# matplotlib>=3.7.0                 # For Phase 4: Visualization
+# flask>=3.0.0                      # For Phase 5: Web API
+# fastapi>=0.104.0                  # For Phase 5: Alternative Web API
+# uvicorn>=0.24.0                   # For Phase 5: ASGI server
