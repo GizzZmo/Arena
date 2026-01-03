@@ -161,3 +161,24 @@ Here is how you handle the learning part:
 4.  **Fine Tuning (The Next Step):** Once you have 1,000 games in that PGN file, you can upload that file to Google Vertex AI to create a **Fine-Tuned Model**. You then update the script to use `model = genai.GenerativeModel('your-finetuned-model-name')`.
 
 Do you have the Stockfish binary downloaded, or do you need help finding the right version for your computer?
+
+## Documentation & Wiki
+
+The GitHub Wiki tracks practical details that should stay short and easy to scan:
+- **Setup & Configuration:** Stockfish install paths, engine skill presets, and how to set `GOOGLE_API_KEY`.
+- **Running Arena Sessions:** Example commands, troubleshooting illegal-move retries, and saving PGN outputs.
+- **Data Management:** How to rotate or archive `training_data.pgn` and tips for fine-tuning inputs.
+- **FAQ:** Common errors (engine not found, API auth) and quick fixes.
+
+Best practices for pages:
+- Lead with a 3–7 step checklist and copy/paste commands.
+- Keep configuration values in one place; reference `.env` keys instead of repeating secrets.
+- Add a short “Last verified on (date) with version (x.y)” note for commands that can drift.
+- Prefer links to upstream docs instead of duplicating long explanations.
+
+## Roadmap
+
+1. **Phase 1 – Arena Loop (Current):** Stockfish vs. Gemini with illegal-move feedback and PGN logging. ✅ Definition of done: stable loop with reproducible setup docs.
+2. **Phase 2 – Data Growth:** Automate long-running sessions, add basic telemetry (move counts, resign reasons), and improve PGN metadata. ✅ Definition of done: nightly runs produce timestamped PGNs with minimal manual babysitting.
+3. **Phase 3 – Fine-Tuning:** Export `training_data.pgn` to Vertex AI, swap in the fine-tuned model name, and validate against a fixed test suite of positions. ✅ Definition of done: baseline ELO/position tests recorded before and after swap.
+4. **Phase 4 – UX & Sharing:** Provide a CLI flag for headless runs, optional web viewer for games, and wiki guides for contributors. ✅ Definition of done: one-command start and a contributor page with expectations.
