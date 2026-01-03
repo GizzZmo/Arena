@@ -28,7 +28,6 @@ import chess
 import chess.engine
 import chess.pgn
 import google.generativeai as genai
-import time
 import datetime
 
 # --- CONFIGURATION ---
