@@ -1,6 +1,7 @@
 import os
 import time
 import datetime
+import functools
 from pathlib import Path
 
 import chess
@@ -21,6 +22,7 @@ GOOGLE_API_KEY = os.getenv(
 )
 
 
+@functools.lru_cache(maxsize=1)
 def _get_model():
     if not GOOGLE_API_KEY or GOOGLE_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
         raise RuntimeError("Set GOOGLE_API_KEY to a valid Gemini API key before running.")
@@ -40,7 +42,16 @@ def _validate_stockfish_path():
     return str(path)
 
 
-model = None
+def _parse_int_env(var_name, default_value):
+    raw_value = os.getenv(var_name)
+    if raw_value in (None, ""):
+        return default_value
+
+    try:
+        return int(raw_value)
+    except ValueError:
+        print(f"Invalid value for {var_name}: {raw_value}. Using default {default_value}.")
+        return default_value
 
 def get_gemini_move(board, retries=3):
     """
@@ -67,11 +78,7 @@ def get_gemini_move(board, retries=3):
 
     for attempt in range(retries):
         try:
-            global model
-            if model is None:
-                model = _get_model()
-
-            response = model.generate_content(prompt)
+            response = _get_model().generate_content(prompt)
             move_str = response.text.strip().replace("\n", "").replace(" ", "")
             
             # clean up common formatting issues if Gemini adds markdown
@@ -160,7 +167,7 @@ def save_game_data(board, output_dir="data", aggregate_file=None, telemetry=None
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(parents=True, exist_ok=True)
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     per_game_path = output_dir_path / f"game_{timestamp}.pgn"
     aggregate_path = Path(aggregate_file) if aggregate_file else output_dir_path / "training_data.pgn"
 
@@ -207,7 +214,7 @@ def run_session(game_count=1, output_dir="data"):
     return saved_paths
 
 if __name__ == "__main__":
-    games_to_play = int(os.getenv("ARENA_GAMES", "1"))
+    games_to_play = _parse_int_env("ARENA_GAMES", 1)
     output_dir = os.getenv("ARENA_OUTPUT_DIR", "data")
 
     run_session(game_count=games_to_play, output_dir=output_dir)
