@@ -212,10 +212,18 @@ Before running the code, you need three things:
     ```
 2.  **Stockfish Engine:** Download the Stockfish executable for your OS (Windows/Mac/Linux) from [stockfishchess.org](https://stockfishchess.org/download/). Note the path to where you save it.
 3.  **Gemini API Key:** Get one from Google AI Studio.
+4.  **Environment variables:** Configure once so you do not edit code:
+    ```bash
+    export STOCKFISH_PATH="/full/path/to/stockfish"
+    export GOOGLE_API_KEY="your_gemini_key"
+    # optional: how many games to run per session and where to store PGNs
+    export ARENA_GAMES=5
+    export ARENA_OUTPUT_DIR="data"
+    ```
 
 ### The Python Code (`cyberchess.py`)
 
-Create a file named `cyberchess.py` and paste this code in. **Make sure to update the `STOCKFISH_PATH` and `GOOGLE_API_KEY` at the top.**
+Create a file named `cyberchess.py` and paste this code in. **Make sure to set `STOCKFISH_PATH` and `GOOGLE_API_KEY` (env vars recommended).**
 
 ```python
 import chess
@@ -349,14 +357,16 @@ if __name__ == "__main__":
     save_game_data(finished_board)
 ```
 
+> The repository version of `cyberchess.py` includes a session runner that honors `ARENA_GAMES`/`ARENA_OUTPUT_DIR`, validates configuration, and writes timestamped PGNs automatically—use the shipped file when in doubt.
+
 ### How to use this for "Learning"
 
 The script above handles **Phase 1 (The Arena)** and **Phase 2 (Data Collection)**.
 
 Here is how you handle the learning part:
 
-1.  **Run the loop:** Change the bottom of the script to `while True: play_game()` and let it run all night.
-2.  **Accumulate Data:** It will generate a file called `training_data.pgn`. This file will eventually contain hundreds of games.
+1.  **Run automated sessions:** `ARENA_GAMES=10 ARENA_OUTPUT_DIR=data python cyberchess.py` will run 10 games back-to-back and drop per-game PGNs plus an aggregated `training_data.pgn` in the chosen directory. Leave it running overnight for growth.
+2.  **Accumulate Data:** Each game is timestamped and annotated with ply count, duration, and termination reason so you can filter later.
 3.  **The Analysis:** Gemini will lose almost every game at first. But occasionally, it will survive 20 or 30 moves.
 4.  **Fine Tuning (The Next Step):** Once you have 1,000 games in that PGN file, you can upload that file to Google Vertex AI to create a **Fine-Tuned Model**. You then update the script to use `model = genai.GenerativeModel('your-finetuned-model-name')`.
 
@@ -378,7 +388,7 @@ Best practices for pages:
 
 ## Roadmap
 
-1. **Phase 1 – Arena Loop (Current):** Stockfish vs. Gemini with illegal-move feedback and PGN logging. ✅ Definition of done: stable loop with reproducible setup docs.
-2. **Phase 2 – Data Growth:** Automate long-running sessions, add basic telemetry (move counts, resign reasons), and improve PGN metadata. ✅ Definition of done: nightly runs produce timestamped PGNs with minimal manual babysitting.
+1. **Phase 1 – Arena Loop (Completed):** Stockfish vs. Gemini with illegal-move feedback and PGN logging. ✅ Definition of done: stable loop with reproducible setup docs.
+2. **Phase 2 – Data Growth (In progress):** Automated long-running sessions, basic telemetry (move counts, termination reason), and improved PGN metadata. Definition of done: nightly runs produce timestamped PGNs with minimal manual babysitting.
 3. **Phase 3 – Fine-Tuning:** Export `training_data.pgn` to Vertex AI, swap in the fine-tuned model name, and validate against a fixed test suite of positions. ✅ Definition of done: baseline ELO/position tests recorded before and after swap.
 4. **Phase 4 – UX & Sharing:** Provide a CLI flag for headless runs, optional web viewer for games, and wiki guides for contributors. ✅ Definition of done: one-command start and a contributor page with expectations.

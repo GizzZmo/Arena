@@ -1,3 +1,10 @@
+import os
+import time
+import datetime
+import functools
+import random
+import uuid
+from pathlib import Path
 """
 Cyberchess Arena: AI Chess Training Platform
 
@@ -31,14 +38,58 @@ import google.generativeai as genai
 import datetime
 
 # --- CONFIGURATION ---
-# REPLACE THIS with the path to your downloaded stockfish file
-# Windows example: "C:/Users/Jon/Downloads/stockfish/stockfish-windows-x86-64.exe"
-# Mac example: "/opt/homebrew/bin/stockfish"
-STOCKFISH_PATH = "YOUR_STOCKFISH_PATH_HERE" 
+STOCKFISH_PATH = os.getenv(
+    "STOCKFISH_PATH",
+    "YOUR_STOCKFISH_PATH_HERE",
+)
 
-# REPLACE THIS with your Google Gemini API Key
-GOOGLE_API_KEY = "YOUR_GEMINI_API_KEY_HERE"
+# REPLACE THIS with your Google Gemini API Key or set GOOGLE_API_KEY
+GOOGLE_API_KEY = os.getenv(
+    "GOOGLE_API_KEY",
+    "YOUR_GEMINI_API_KEY_HERE",
+)
 
+
+@functools.lru_cache(maxsize=1)
+def _get_model():
+    if not GOOGLE_API_KEY or GOOGLE_API_KEY == "YOUR_GEMINI_API_KEY_HERE":
+        raise RuntimeError("Set GOOGLE_API_KEY to a valid Gemini API key before running.")
+
+    genai.configure(api_key=GOOGLE_API_KEY)
+    return genai.GenerativeModel("gemini-1.5-flash")  # Using Flash for speed
+
+
+def _validate_stockfish_path():
+    if not STOCKFISH_PATH or STOCKFISH_PATH == "YOUR_STOCKFISH_PATH_HERE":
+        raise RuntimeError("Set STOCKFISH_PATH to your Stockfish binary path.")
+
+    path = Path(STOCKFISH_PATH)
+    if not path.exists():
+        raise FileNotFoundError(f"Stockfish binary not found at {path}")
+
+    return str(path)
+
+
+def _parse_int_env(var_name, default_value):
+    raw_value = os.getenv(var_name)
+    if raw_value is None or not raw_value.strip():
+        return default_value
+
+    try:
+        return int(raw_value)
+    except ValueError:
+        print(f"Invalid value for {var_name}. Using default {default_value}.")
+        return default_value
+
+
+def _timestamp_token():
+    return f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
+
+
+def _determine_termination(outcome):
+    if outcome and outcome.termination:
+        return getattr(outcome.termination, "name", "UNKNOWN")
+    return "UNKNOWN"
 # Setup Gemini
 # Configure the Gemini API with authentication
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -82,7 +133,8 @@ def get_gemini_move(board, retries=3):
     Sends the board state to Gemini and asks for a move.
     Includes a retry loop for illegal moves.
     """
-    legal_moves = [move.uci() for move in board.legal_moves]
+    legal_moves = list(board.legal_moves)
+    legal_move_strings = [move.uci() for move in legal_moves]
     
     # We provide the FEN (Board State) and the list of legal moves to help Gemini
     # ground its reasoning and avoid hallucinations.
@@ -92,7 +144,7 @@ def get_gemini_move(board, retries=3):
     Current Board Position (FEN): {board.fen()}
     
     Here is the list of legally possible moves you can make:
-    {', '.join(legal_moves)}
+    {', '.join(legal_move_strings)}
     
     Your goal is to survive and learn. Analyze the board.
     Pick the best move from the legal list above.
@@ -116,7 +168,7 @@ def get_gemini_move(board, retries=3):
             # Validate that the move is legal
     for attempt in range(retries):
         try:
-            response = model.generate_content(prompt)
+            response = _get_model().generate_content(prompt)
             move_str = response.text.strip().replace("\n", "").replace(" ", "")
             
             # clean up common formatting issues if Gemini adds markdown
@@ -124,7 +176,7 @@ def get_gemini_move(board, retries=3):
 
             move = chess.Move.from_uci(move_str)
 
-            if move in board.legal_moves:
+            if move in legal_moves:
                 return move
             else:
                 print(f" > Gemini tried illegal move: {move_str}. Retrying...")
@@ -142,8 +194,7 @@ def get_gemini_move(board, retries=3):
 
     # If Gemini fails 3 times, we make a random move to keep the game going (fallback)
     print(" > Gemini failed to produce a legal move. Making random move.")
-    import random
-    return random.choice(list(board.legal_moves))
+    return random.choice(legal_moves)
 
 def play_game():
     """
@@ -178,7 +229,8 @@ def play_game():
     # Skill level 0 is weak, 20 is Grandmaster. Starting at 5 for balanced learning.
     # Initialize Board and Stockfish
     board = chess.Board()
-    engine = chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH)
+    start_time = time.time()
+    engine = chess.engine.SimpleEngine.popen_uci(_validate_stockfish_path())
     
     # Set Stockfish skill level (Lower it initially so Gemini has a chance)
     # Skill level 0 is weak, 20 is Grandmaster. Let's start at 5.
@@ -229,9 +281,11 @@ def play_game():
     print(f"Result: {board.result()}")
     
     engine.quit()
-    return board
+    duration_seconds = time.time() - start_time
 
-def save_game_data(board):
+    return board, duration_seconds
+
+def save_game_data(board, output_dir="data", aggregate_file=None, telemetry=None):
     """
     Save completed game data to a PGN file for future model training.
     
@@ -268,13 +322,70 @@ def save_game_data(board):
     pgn_game.headers["White"] = "Stockfish Level 5"
     pgn_game.headers["Black"] = "Gemini 1.5 Flash"
     pgn_game.headers["Date"] = datetime.datetime.now().strftime("%Y.%m.%d")
+    pgn_game.headers["Result"] = board.result()
 
+    if telemetry:
+        pgn_game.headers["PlyCount"] = str(telemetry.get("ply_count"))
+        pgn_game.headers["DurationSeconds"] = f"{telemetry.get('duration_seconds', 0):.1f}"
+        if telemetry.get("termination"):
+            pgn_game.headers["Termination"] = telemetry["termination"]
+
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
+
+    timestamp = _timestamp_token()
+    per_game_path = output_dir_path / f"game_{timestamp}.pgn"
+    aggregate_path = Path(aggregate_file) if aggregate_file else output_dir_path / "training_data.pgn"
+
+    with open(per_game_path, "w") as f:
+        f.write(str(pgn_game) + "\n\n")
+
+    with open(aggregate_path, "a") as f:
     # Append game to training dataset file
     with open("training_data.pgn", "a") as f:
         f.write(str(pgn_game) + "\n\n")
-    print("Game saved to 'training_data.pgn'")
+
+    print(f"Game saved to '{per_game_path}' and aggregated in '{aggregate_path}'")
+    return per_game_path
+
+
+def run_session(game_count=1, output_dir="data"):
+    saved_paths = []
+    aggregate_file = Path(output_dir) / "training_data.pgn"
+
+    for game_index in range(1, game_count + 1):
+        print(f"\n=== Starting game {game_index}/{game_count} ===")
+        board, duration_seconds = play_game()
+        outcome = board.outcome()
+        termination = _determine_termination(outcome)
+
+        telemetry = {
+            "duration_seconds": duration_seconds,
+            "ply_count": len(board.move_stack),
+            "termination": termination,
+        }
+
+        per_game_path = save_game_data(
+            board,
+            output_dir=output_dir,
+            aggregate_file=aggregate_file,
+            telemetry=telemetry,
+        )
+
+        print(
+            f"Game {game_index} result {board.result()} "
+            f"({termination}), {telemetry['ply_count']} plies in "
+            f"{telemetry['duration_seconds']:.1f}s -> {per_game_path}"
+        )
+        saved_paths.append(per_game_path)
+
+    return saved_paths
 
 if __name__ == "__main__":
+    games_to_play = _parse_int_env("ARENA_GAMES", 1)
+    output_dir = os.getenv("ARENA_OUTPUT_DIR", "data")
+
+    run_session(game_count=games_to_play, output_dir=output_dir)
     """
     Main execution entry point.
     
