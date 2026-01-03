@@ -272,7 +272,7 @@ Project maintainers have the right to remove, edit, or reject comments, commits,
 
 ## 📄 License
 
-By contributing, you agree that your contributions will be licensed under the same license as the project (MIT License - assumed).
+By contributing, you agree that your contributions will be licensed under the same license as the project (MIT License).
 
 ---
 
