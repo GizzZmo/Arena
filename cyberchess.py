@@ -59,6 +59,12 @@ def _parse_int_env(var_name, default_value):
 def _timestamp_token():
     return f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
 
+
+def _determine_termination(outcome):
+    if outcome and outcome.termination:
+        return getattr(outcome.termination, "name", "UNKNOWN")
+    return "UNKNOWN"
+
 def get_gemini_move(board, retries=3):
     """
     Sends the board state to Gemini and asks for a move.
@@ -195,7 +201,7 @@ def run_session(game_count=1, output_dir="data"):
         print(f"\n=== Starting game {game_index}/{game_count} ===")
         board, duration_seconds = play_game()
         outcome = board.outcome()
-        termination = getattr(outcome.termination, "name", "UNKNOWN") if outcome and outcome.termination else "UNKNOWN"
+        termination = _determine_termination(outcome)
 
         telemetry = {
             "duration_seconds": duration_seconds,
@@ -212,8 +218,8 @@ def run_session(game_count=1, output_dir="data"):
 
         print(
             f"Game {game_index} result {board.result()} "
-            f"({termination}), {telemetry['ply_count']} plies in "
-            f"{telemetry['duration_seconds']:.1f}s -> {per_game_path}"
+            f"({termination}), {telemetry.get('ply_count', len(board.move_stack))} plies in "
+            f"{telemetry.get('duration_seconds', 0):.1f}s -> {per_game_path}"
         )
         saved_paths.append(per_game_path)
 
